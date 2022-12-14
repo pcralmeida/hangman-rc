@@ -38,7 +38,7 @@
 #define REVEAL_PROTOCOL "REV" // Reveal protocol
 #define QUIT "quit" // Quit command
 #define QUIT_PROTOCOL "QUT" // Quit protocol
-#define EXIT "exit" // Exit command
+#define EXIT "exit" // Exit command s
 
 #define STATUS_OK "OK" // Status OK
 #define STATUS_NOK "NOK" // Status NOK
