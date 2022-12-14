@@ -1,0 +1,8 @@
+{
+    "C_Cpp.errorSquiggles": "Disabled",
+    "files.associations": {
+        "compare": "c",
+        "limits": "c",
+        "new": "c"
+    }
+}

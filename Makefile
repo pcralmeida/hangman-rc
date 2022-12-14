@@ -7,14 +7,15 @@ CC ?= gcc
 LD ?= gcc
 
 # space separated list of directories with header files
-INCLUDE_DIRS := client .
+INCLUDE_DIRS := client . server .
 # this creates a space separated list of -I<dir> where <dir> is each of the values in INCLUDE_DIRS
 INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := client/client
+TARGET_EXECS := client/client server/server
+
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
@@ -47,6 +48,7 @@ endif
 
 all: $(TARGET_EXECS) 
 	mv client/client client/player
+	mv server/server server/GS
 
 
 # The following target can be used to invoke clang-format on all the source and header
@@ -66,6 +68,8 @@ fmt: $(SOURCES) $(HEADERS)
 # make uses a set of default rules, one of which compiles C binaries
 # the CC, LD, CFLAGS and LDFLAGS are used in this rule
 client/client: client/client.o client/client_functions.o
+
+server/server: server/server.o server/server_functions.o
 
 clean:
 	rm -f $(OBJECTS) $(TARGET_EXECS)
