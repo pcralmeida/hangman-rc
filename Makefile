@@ -72,7 +72,7 @@ client/client: client/client.o client/client_functions.o
 server/server: server/server.o server/server_functions.o
 
 clean:
-	rm -f $(OBJECTS) $(TARGET_EXECS)
+	rm -f $(OBJECTS) $(TARGET_EXECS) client/player server/GS client/*.jpg client/*.jpeg client/[S]*
 
 
 # This generates a dependency file, with some default dependencies gathered from the include tree

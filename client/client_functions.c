@@ -78,8 +78,6 @@ void composeWord(char letter[], int pos[]) {
     int j = 0;
     char upper_letter = (char) toupper(letter[0]);
     for(i=0;i<strlen(letters);i++) {
-        /*if (j == (sizeof(pos)/sizeof(int))) 
-            break;*/
         if ((i/2) == (pos[j] - 1)) {
             letters[i+1] = upper_letter;
             j++;   
@@ -174,7 +172,7 @@ int playLetter(int fd, char* letter) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
-        fprintf(stderr,"Error sending message: %s\n",strerror(errno));
+        fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         exit(1);
     }
 
@@ -259,7 +257,7 @@ int guessWord(int fd, char* guess) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
-        fprintf(stderr,"Error sending message: %s\n",strerror(errno));
+        fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         exit(1);
     }
 
@@ -561,8 +559,6 @@ int getHint(int fd) {
         bytes -= (size_t) n;
         cursor += n;
     }
-
-    printf("message sent: %s\n", message);
     
     memset(message, 0, BUFFERSIZE_LARGE);
     bytes = MAX_RESPONSE_SIZE; 

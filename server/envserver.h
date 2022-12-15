@@ -3,9 +3,20 @@
 
 
 #define BUFFERSIZE 4096 // Buffer size for the socket (2^12 = 4096, chosen because it is a power of 2)
+#define PLIDSIZE 6 // Size of the player ID (6 characters)
+#define PROTOCOLSIZE 3 // Size of the protocol "XXX" (3 characters)
 #define DEFAULT_PORT "58079" // The group number is 079, DEFAULT_PORT = PORT + 079
 #define VERBOSE_MODIFIER "-v" // The verbose modifier argument
 #define PORT_MODIFIER "-p" // The port modifier argument
+
+#define START_GAME_PROTOCOL "SNG" // Start game protocol
+#define GUESS_WORD_PROTOCOL "PWG" // Guess protocol
+#define PLAY_LETTER_PROTOCOL "PLG" // Play protocol
+#define SCOREBOARD_PROTOCOL "GSB" // Scoreboard protocol
+#define HINT_PROTOCOL "GHL" // Hint protocol
+#define STATE_PROTOCOL "STA" // State protocol
+#define REVEAL_PROTOCOL "REV" // Reveal protocol
+#define QUIT_PROTOCOL "QUT" // Quit protocol
 
 #define START_GAME_RESPONSE_PROTOCOL "RSG" //Start game response protocol
 #define PLAY_LETTER_RESPONSE_PROTOCOL "RLG" //Play letter response protocol
@@ -17,6 +28,17 @@
 #define STATE_RESPONSE_PROTOCOL "RST" //State response protocol
 #define ERROR_RESPONSE_PROTOCOL "ERR" //Error response protocol
 
+#define STATUS_OK "OK" // Status OK
+#define STATUS_NOK "NOK" // Status NOK
+#define STATUS_DUP "DUP" // Status DUP
+#define STATUS_ERR "ERR" // Status ERR
+#define STATUS_INV "INV" // Status INV
+#define STATUS_WIN "WIN" // Status WIN
+#define STATUS_OVR "OVR" // Status OVR
+#define STATUS_EMPTY "EMPTY" // Status EMPTY
+#define STATUS_ACT "ACT" // Status ACT
+#define STATUS_FIN "FIN" // Status FIN
+
 struct SCORELIST {
     int* score;
     char** PLID;
@@ -27,5 +49,6 @@ struct SCORELIST {
 };
 
 void applyModifiers(int argc, char *argv[]); // Apply the modifiers
+int receiveUDP(int fd); // Receive UDP packets
 
 #endif
