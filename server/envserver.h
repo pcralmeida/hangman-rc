@@ -4,10 +4,12 @@
 
 #define BUFFERSIZE 4096 // Buffer size for the socket (2^12 = 4096, chosen because it is a power of 2)
 #define PLIDSIZE 6 // Size of the player ID (6 characters)
-#define PROTOCOLSIZE 3 // Size of the protocol "XXX" (3 characters)
+#define PROTOCOL_SIZE 3 // Size of the protocol "XXX" (3 characters)
 #define DEFAULT_PORT "58079" // The group number is 079, DEFAULT_PORT = PORT + 079
 #define VERBOSE_MODIFIER "-v" // The verbose modifier argument
 #define PORT_MODIFIER "-p" // The port modifier argument
+#define WORDFILE "wordfile.txt" // The word file
+#define WORDFILE_SIZE 648 // The size of the word file
 
 #define START_GAME_PROTOCOL "SNG" // Start game protocol
 #define GUESS_WORD_PROTOCOL "PWG" // Guess protocol
@@ -38,6 +40,12 @@
 #define STATUS_EMPTY "EMPTY" // Status EMPTY
 #define STATUS_ACT "ACT" // Status ACT
 #define STATUS_FIN "FIN" // Status FIN
+
+#define CODE_LETTER "L" // Code LETTER
+#define CODE_GUESS "G" // Code GUESS
+#define CODE_WIN "W" // Code WIN
+#define CODE_FAIL "F" // Code FAIL
+#define CODE_QUIT "Q" // Code QUIT
 
 struct SCORELIST {
     int* score;
