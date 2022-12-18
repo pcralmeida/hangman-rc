@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -72,6 +73,7 @@ void randomLineSelection(FILE *wordfile, char *word, char *guess) {
         }
         line_number++;
     }
+    fseek(wordfile, 0, SEEK_SET);
 }
 
 int numberOfLines(FILE *file) {
@@ -81,14 +83,51 @@ int numberOfLines(FILE *file) {
     while (getline(&fline, &fline_size, file) != -1) {
         n_lines++;
     }
-
+    fseek(file, 0, SEEK_SET);
     return n_lines;
 }
 
-void saveGame(char gfname[], char code[]) {
+int repeatedGuess(FILE *file, char new_guess[]) {
+    char *fline = NULL;
+    char guess[BUFFERSIZE] = "";
+    char code[BUFFERSIZE] = "";
+    size_t fline_size = 0;
+    while (getline(&fline, &fline_size, file) != -1) {
+        sscanf(fline, "%s %s", code, guess);
+        if (strcmp(new_guess, guess) == 0) {
+            fseek(file, 0, SEEK_SET);
+            return 1;
+        }
+    }
+    fseek(file, 0, SEEK_SET);
+    return 0;
+}
+
+int lettersGuessed(FILE *file, char correct[]) {
+    int n_letters = 0;
+    char guess_letter;
+    char *fline = NULL;
+    char guess[BUFFERSIZE] = "";
+    char code[BUFFERSIZE] = "";
+    size_t fline_size = 0;
+    while (getline(&fline, &fline_size, file) != -1) {
+        sscanf(fline, "%s %s", code, guess);
+        guess_letter = guess[0];
+        if (strlen(guess) == 1 && strchr(correct, guess_letter) != NULL)
+            n_letters++;
+    }
+    fseek(file, 0, SEEK_SET);
+    return n_letters;
+}
+
+void saveGame(char gfname[], char code[], char PLID[]) {
     char savedfilename[BUFFERSIZE] = "";
+    char dirname[BUFFERSIZE] = "";
     savedfilename[1] = '\0';
-    sprintf(savedfilename, "GAMES/%ld_(%s).txt", time(NULL), code);
+    dirname[1] = '\0';
+    sprintf(dirname, "GAMES/%s", PLID);
+    mkdir(dirname, 0777);
+    sprintf(savedfilename, "%s/%ld_(%s).txt", dirname, time(NULL), code);
     rename(gfname, savedfilename);
 }
 
@@ -250,9 +289,20 @@ int guessWord(char message[]) {
         return 0;
     }
 
+    else if (repeatedGuess(gamefile, word)) {
+        strcat(message, STATUS_DUP);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+        fclose(gamefile);
+        return 0;
+    }
+
     if (strcmp(word, correct) == 0) {
+        fprintf(gamefile, "%s %s\n", CODE_GUESS, word);
         sprintf(server_tries_str, "%d", server_tries + 1);
-        saveGame(gfname, CODE_WIN);
+        fclose(gamefile);
+        saveGame(gfname, CODE_WIN, PLID);
         strcat(message, STATUS_WIN);
         strcat(message, " ");
         strcat(message, server_tries_str);
@@ -261,7 +311,9 @@ int guessWord(char message[]) {
     }
 
     else if (server_tries > maxErrors(correct)) {
-        saveGame(gfname, CODE_FAIL);
+        fprintf(gamefile, "%s %s\n", CODE_GUESS, word);
+        fclose(gamefile);
+        saveGame(gfname, CODE_FAIL, PLID);
         strcat(message, STATUS_OVR);
         strcat(message, " ");
         strcat(message, server_tries_str);
@@ -282,13 +334,132 @@ int guessWord(char message[]) {
     return 0;
 }
 
+int playLetter(char message[]) {
+    FILE *gamefile = NULL;
+    int tries = 0, server_tries = 0;
+    char letter;
+    char PLID[PLIDSIZE + 1] = "";
+    char correct[BUFFERSIZE] = "";
+    char gfname[BUFFERSIZE] = "";
+    char server_tries_str[BUFFERSIZE] = "";
+    PLID[1] = '\0';
+    correct[1] = '\0';
+    gfname[1] = '\0';
+    server_tries_str[1] = '\0';
+
+    sscanf(message + PROTOCOL_SIZE, "%s %c %d", PLID, &letter, &tries);
+
+    strcat(gfname, "GAME_");
+    strcat(gfname, PLID);
+    strcat(gfname, ".txt");
+
+    memset(message, 0, BUFFERSIZE);
+
+    strcat(message, PLAY_LETTER_RESPONSE_PROTOCOL);
+    strcat(message, " ");
+
+    gamefile = fopen(gfname, "r");
+
+    if (gamefile == NULL) {
+        fprintf(stderr,"Error opening game file %s: %s\n",gfname, strerror(errno));
+        strcat(message, STATUS_ERR);
+        strcat(message, "\n");
+        return 0;
+    }
+
+    fclose(gamefile);
+
+    gamefile = fopen(gfname, "a+");
+
+    fscanf(gamefile, "%s", correct);
+
+    server_tries = numberOfLines(gamefile);
+
+    sprintf(server_tries_str, "%d", server_tries);
+
+    if (tries != server_tries) {
+        printf("tries, server_tries: %d, %d", tries, server_tries);
+        strcat(message, STATUS_INV);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+    }
+
+    else if (repeatedGuess(gamefile, (char[]) {letter, '\0'})) {
+        strcat(message, STATUS_DUP);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+    }
+
+    else if (lettersGuessed(gamefile, correct) == strlen(correct)) {
+        fprintf(gamefile, "%s %c\n", CODE_LETTER, letter);
+        sprintf(server_tries_str, "%d", server_tries + 1);
+        fclose(gamefile);
+        saveGame(gfname, CODE_WIN, PLID);
+        strcat(message, STATUS_WIN);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+        return 0;
+    }
+
+    else if (server_tries > maxErrors(correct)) {
+        printf("server_tries: %d, maxErrors: %d\n", server_tries, maxErrors(correct));
+        fprintf(gamefile, "%s %c\n", CODE_LETTER, letter);
+        fclose(gamefile);
+        saveGame(gfname, CODE_FAIL, PLID);
+        strcat(message, STATUS_OVR);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+        return 0;
+    }
+
+    else if (strchr(correct, letter) != NULL) {
+        fprintf(gamefile, "%s %c\n", CODE_LETTER, letter);
+        sprintf(server_tries_str, "%d", server_tries + 1);
+        strcat(message, STATUS_OK);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        for (int i = 0, j = 0; i < strlen(correct); i++) {
+            if (correct[i] == letter) 
+                j++;
+            if (i == strlen(correct) - 1) {
+                strcat(message, " ");
+                strcat(message, (char[]) {(char) (j + '0'), '\0'});
+            }
+        }
+        for (int i = 0; i < strlen(correct); i++) {
+            if (correct[i] == letter) {
+                strcat(message, " ");
+                strcat(message, (char[]) {(char) (i + '1'), '\0'});
+            }
+        }
+        strcat(message, "\n");
+        return 0;
+    }
+
+    else {
+        fprintf(gamefile, "%s %c\n", CODE_LETTER, letter);
+        sprintf(server_tries_str, "%d", server_tries + 1);
+        strcat(message, STATUS_NOK);
+        strcat(message, " ");
+        strcat(message, server_tries_str);
+        strcat(message, "\n");
+    }
+
+    fclose(gamefile);
+
+    return 0;
+}
 
 void analyzeMessage(char message[]) {
     char command[BUFFERSIZE] = "";
     command[1] = '\0';
     sscanf(message, "%s", command);
 
-    if ((strcmp(command, START_GAME_PROTOCOL) == 0) && (strlen(message) == PROTOCOL_SIZE + PLIDSIZE + 2)) {
+    if ((strcmp(command, START_GAME_PROTOCOL) == 0)) {
         printf("Start game command detected.\n");
         startGame(message);
 
@@ -296,6 +467,7 @@ void analyzeMessage(char message[]) {
 
     else if (strcmp(command, PLAY_LETTER_PROTOCOL) == 0) {
         printf("Play letter command detected.\n");
+        playLetter(message);
     }
 
     else if (strcmp(command, GUESS_WORD_PROTOCOL) == 0) {
@@ -381,6 +553,11 @@ int receiveUDP(int fd) {
         if(n==-1) {
             fprintf(stderr, "Error sending message: %s\n", strerror(errno));
             exit(1);
+        }
+
+        if (verbose == 1) {
+            fprintf(stdout, "Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
+            fprintf(stdout, "Message content: %s", message);
         }
     }
     freeaddrinfo(res);
