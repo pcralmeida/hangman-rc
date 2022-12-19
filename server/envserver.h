@@ -47,16 +47,19 @@
 #define CODE_FAIL "F" // Code FAIL
 #define CODE_QUIT "Q" // Code QUIT
 
+enum {idle, busy} state; // Fd state
+
 struct SCORELIST {
     int* score;
     char** PLID;
     char** word;
     int* n_succ;
     int* n_tot;
-    int* n_scores;
+    int n_scores;
 };
 
 void applyModifiers(int argc, char *argv[]); // Apply the modifiers
 int receiveUDP(int fd); // Receive UDP packets
+int receiveTCP(int fd); // Receive TCP packets
 
 #endif

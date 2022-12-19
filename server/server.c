@@ -31,6 +31,9 @@ int main(int argc, char *argv[]) {
     }
 
     else if (pid == 0) { // Child process handles TCP
+        printf("TCP server is now open.\n");
+        receiveTCP(tcp_fd);
+        printf("TCP server is now closed.\n");
     }
 
     return 0;

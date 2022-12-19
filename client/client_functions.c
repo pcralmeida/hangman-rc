@@ -380,7 +380,10 @@ int quitGame(int fd, int exit_code) {
 
     if (!exit_code) {
         if (strcmp(status, STATUS_ERR) == 0 || strcmp(command, STATUS_ERR) == 0) 
-            printf("There is not a game in progress.\n");
+            printf("An error has ocurred. Please try again\n");
+
+        else if (strcmp(status, STATUS_NOK) == 0 || strcmp(command, STATUS_NOK) == 0)
+            printf("There is not a game being played currently.\n");
         else
             printf("You have quit the game.\n");
     }
