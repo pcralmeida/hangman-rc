@@ -245,9 +245,9 @@ int findLastGame(char *PLID, char *fname) {
 
 int findTopScores(struct SCORELIST *list) {
     struct dirent **filelist;
-    int n_entries, i_file;
+    int n_entries = 0, i_file = 0;
     char fname[BUFFERSIZE] = "";
-    FILE *fp;
+    FILE *fp = NULL;
 
     n_entries = scandir("SCORES/", &filelist, 0, alphasort);
     i_file = 0;
@@ -573,7 +573,7 @@ int scoreboard(char message[]) {
     content_size[1] = '\0';
 
     int score_number = findTopScores(scorelist);
-    memset(message, 0, BUFFERSIZE);
+    memset(message, 0, BUFFERSIZE_LARGE);
 
     printf("score_number is %d\n", score_number);
 
@@ -629,6 +629,72 @@ int scoreboard(char message[]) {
     strcat(message, content);
     strcat(message, "\n");
 
+    return 0;
+}
+
+int getHint(char message[]) {
+    FILE *gamefile = NULL;
+    FILE *image = NULL;
+    size_t bytes_read = 0;
+    size_t image_size = 0;
+    char gfname[BUFFERSIZE] = "";
+    char PLID[PLIDSIZE + 1] = "";
+    char correct[BUFFERSIZE] = "";
+    char image_name[BUFFERSIZE] = "";
+    char image_content[BUFFERSIZE_LARGE] = "";
+
+    gfname[1] = '\0';
+    PLID[1] = '\0';
+    correct[1] = '\0';
+    image_name[1] = '\0';
+
+    sscanf(message + PROTOCOL_SIZE, "%s", PLID);
+
+    strcat(gfname, "GAME_");
+    strcat(gfname, PLID);
+    strcat(gfname, ".txt");
+
+    memset(message, 0, BUFFERSIZE_LARGE);
+
+    strcat(message, HINT_RESPONSE_PROTOCOL);
+    strcat(message, " ");
+
+    gamefile = fopen(gfname, "r");
+
+    if (gamefile == NULL) {
+        fprintf(stderr, "Error: Could not find game file.\n");
+        sprintf(message, "%s %s\n", HINT_RESPONSE_PROTOCOL, STATUS_NOK);
+        return 0;
+    }
+
+    fscanf(gamefile, "%s %s", correct, image_name);
+    fseek(gamefile, 0, SEEK_SET);
+    fclose(gamefile);
+
+    image = fopen(image_name, "r");
+
+    if (image == NULL) {
+        fprintf(stderr, "Error: Could not find image file.\n");
+        sprintf(message, "%s %s\n", HINT_RESPONSE_PROTOCOL, STATUS_NOK);
+        return 0;
+    }
+
+    fseek(image, 0, SEEK_END);
+    image_size = (size_t) ftell(image);
+    fseek(image, 0, SEEK_SET);
+
+    bytes_read = fread(image_content, image_size, 1, image);
+
+    if (bytes_read != 1) {
+        fprintf(stderr, "Error: Could not read image file.\n");
+        sprintf(message, "%s %s\n", HINT_RESPONSE_PROTOCOL, STATUS_NOK);
+        return 0;
+    }
+
+    fclose(image);
+
+    sprintf(message, "%s %s %s %ld %s", HINT_RESPONSE_PROTOCOL, STATUS_OK, image_name, image_size, image_content);
+    
     return 0;
 }
 
@@ -694,6 +760,7 @@ void analyzeMessage(char message[]) {
 
     else if (strcmp(command, HINT_PROTOCOL) == 0) {
         printf("Hint command detected.\n");
+        getHint(message);
     }
 
     else if (strcmp(command, STATE_PROTOCOL) == 0) {
@@ -728,13 +795,6 @@ int receiveUDP(int fd) {
         exit(1); 
     }
 
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
-        fprintf(stderr, "TCP Error: setsockopt(SO_REUSEADDR) failed.\n");
-        exit(1);
-    }
-
-    printf("UDP is running.\n");
-
     memset(&hints,0,sizeof hints);
     hints.ai_family=AF_INET; //IPv4
     hints.ai_socktype=SOCK_DGRAM;//UDP socket
@@ -757,6 +817,8 @@ int receiveUDP(int fd) {
         addrlen=sizeof(addr);
         fprintf(stdout, "Waiting for UDP message...\n");
         nread=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr, &addrlen);
+
+        printf("fd: %d\n", fd);
         if(nread==-1) {/*error*/
             fprintf(stderr, "Error receiving message: %s\n", strerror(errno));
             exit(1);
@@ -786,18 +848,26 @@ int receiveUDP(int fd) {
     return 0;
 }
 
-
 int receiveTCP(int fd) {
+    struct sigaction act;
     struct addrinfo hints, *res;
-    int pid, newfd, errcode, counter; 
-    ssize_t n,nw;
-    fd_set rfds;
+    int newfd, errcode; 
+    ssize_t n;
+    size_t bytes;
     struct sockaddr_in addr;
     socklen_t addrlen;
-    char*ptr, message[BUFFERSIZE];
+    char *cursor, message[BUFFERSIZE] = "";
     message[1] = '\0';
+
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = SIG_IGN;
+
+    if (sigaction(SIGCHLD, &act, NULL) == -1) {
+        fprintf(stderr, "TCP Error: sigaction failed... %s.\n", strerror(errno));
+        exit(1);
+    }
     
-    if((fd=socket(AF_INET,SOCK_STREAM,0))==-1) {
+    if ((fd=socket(AF_INET,SOCK_STREAM,0)) == -1) {
         fprintf(stderr, "Socket creation failed.\n");
         exit(1);
     }
@@ -806,8 +876,6 @@ int receiveTCP(int fd) {
         fprintf(stderr, "TCP Error: setsockopt(SO_REUSEADDR) failed.\n");
         exit(1);
     }
-
-    printf("TCP is running.\n");
 
     memset(&hints,0,sizeof hints);
     hints.ai_family=AF_INET;//IPv4 
@@ -830,54 +898,77 @@ int receiveTCP(int fd) {
         fprintf(stderr, "TCP Error: server failed to listen...%s\n", strerror(errno)); /*error*/
         exit(1);
     }
-    
 
     while(1) {
-        FD_ZERO(&rfds);
-        FD_SET(fd, &rfds);
-        counter = select(fd+1, &rfds, NULL, NULL, NULL);
-        if(counter <= -1) { /*error*/
-            fprintf(stderr, "TCP Error in select: server failed to select.\n");
-            exit(1);
-        }
+
         addrlen=sizeof(addr);
+
         fprintf(stdout, "Waiting for TCP message...\n");
 
-        if((newfd=accept(fd,(struct sockaddr*)&addr,&addrlen))==-1) /*error*/
-            exit(1);
-
-        if ((pid = fork()) == -1) {
-            fprintf(stderr, "Error: Child process could not be created.\n");
+        if ((newfd = accept(fd, (struct sockaddr*)&addr, &addrlen)) == -1) {
+            fprintf(stderr, "TCP Error: server failed to accept...%s\n", strerror(errno)); /*error*/
             exit(1);
         }
 
-        else if (pid == 0) { // Child process handles new request
-            while((n=read(newfd,message, BUFFERSIZE)) != 0) {
-                if(n==-1) /*error*/
-                    exit(1);
-                if (verbose == 1) {
-                fprintf(stdout, "TCP Message received from %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-                fprintf(stdout, "Message content: %s", message);
-                }
-                ptr=&message[0];
-                analyzeMessage(message);
-                while(n > 0) {
-                    if((nw=write(newfd, ptr, (size_t) n)) <= 0) /*error*/
-                        exit(1);
-                    n -= nw; 
-                    ptr += nw;
-                }
-                if (verbose == 1) {
-                fprintf(stdout, "TCP Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-                fprintf(stdout, "Message content: %s", message);
-                }
-            }
-            close(newfd);
-        }
+        printf("newfd: %d\n", newfd);
+        printf("fd: %d\n", fd);
         
+        if (verbose == 1) 
+            fprintf(stdout, "TCP Message received from %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
+
+
+        bytes = PROTOCOL_SIZE;
+        cursor = message;
+        while (bytes > 0) {
+            n = read(newfd, cursor, bytes);
+            if (n == -1) {
+                fprintf(stderr, "TCP Error: server failed to receive...%s\n", strerror(errno)); /*error*/
+                exit(1);
+            }
+            bytes -= (size_t) n;
+            cursor += n;
+        }
+
+        if (verbose == 1) 
+            fprintf(stdout, "Message content: %s\n", message);
+
+        if (strcmp(message, HINT_PROTOCOL) == 0 || strcmp(message, STATE_PROTOCOL) == 0) {
+            bytes = PLIDSIZE + 1;
+            while (bytes > 0) {
+                n = read(newfd, cursor, bytes);
+                if (n == -1) {
+                    fprintf(stderr, "TCP Error: server failed to receive...%s\n", strerror(errno)); /*error*/
+                    exit(1);
+                }
+                bytes -= (size_t) n;
+                cursor += n;
+            }
+        } 
+
+        if (verbose == 1) {
+            fprintf(stdout, "TCP Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
+            fprintf(stdout, "Message content: %s\n", message);
+        }
+
+        analyzeMessage(message);
+
+        bytes = strlen(message);
+        cursor = message;
+        while (bytes > 0) {
+            n = write(newfd, cursor, bytes);
+            if (n == -1) {
+                fprintf(stderr, "TCP Error: server failed to send...%s\n", strerror(errno)); /*error*/
+                exit(1);
+            }
+            bytes -= (size_t) n;
+            cursor += n;
+        }
+
+        close(newfd);
     }
+        
     freeaddrinfo(res);
     close(fd);
-    exit(0);
+    return 0;
 }
 

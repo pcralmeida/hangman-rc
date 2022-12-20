@@ -3,6 +3,7 @@
 
 
 #define BUFFERSIZE 4096 // Buffer size for the socket (2^12 = 4096, chosen because it is a power of 2)
+#define BUFFERSIZE_LARGE 8000000 // Buffer size for images 
 #define PLIDSIZE 6 // Size of the player ID (6 characters)
 #define PROTOCOL_SIZE 3 // Size of the protocol "XXX" (3 characters)
 #define DEFAULT_PORT "58079" // The group number is 079, DEFAULT_PORT = PORT + 079
@@ -47,7 +48,7 @@
 #define CODE_FAIL "F" // Code FAIL
 #define CODE_QUIT "Q" // Code QUIT
 
-enum {idle, busy} state; // Fd state
+#define max(a,b) ((a) > (b) ? (a) : (b)) // Max function
 
 struct SCORELIST {
     int* score;
