@@ -35,5 +35,6 @@
      - The client application does extra input validation, such as starting a command with no PLID or with a PLID that does not exist.
      - The client application sockets have a timeout of 10 seconds.
      - The score/hint/word/state files have a different timestamp and format from the one suggested by the server specification file.
+     - The server 'hint' function is not fully implemented. It can only form the image in the server, but it does not send it to the client.
 
      

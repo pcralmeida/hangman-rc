@@ -17,9 +17,9 @@ pid_t pid;
 
 int main(int argc, char *argv[]) {
 
-    applyModifiers(argc, argv);
+    applyModifiers(argc, argv); // Apply the modifiers
 
-    if ((pid = fork()) == -1) {
+    if ((pid = fork()) == -1) { // Create a child process
         fprintf(stderr, "Error: Child process could not be created.\n");
         exit(1);
     }
