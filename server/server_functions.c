@@ -13,37 +13,100 @@
 #include <time.h>
 #include <dirent.h>
 #include <math.h>
+#include <ctype.h>
 #include <signal.h>
 #include <errno.h>
 
 int verbose = 0;
+int sequential = 0;
 char *GSport = DEFAULT_PORT;
 
 void applyModifiers(int argc, char *argv[]) {
 
 
     if ((argc >= 3 && strcmp(argv[2], VERBOSE_MODIFIER) == 0) || (argc >= 5 && strcmp(argv[4], VERBOSE_MODIFIER) == 0)) {
-        printf("Verbose mode enabled.\n");
+        fprintf(stdout, "Verbose mode enabled.\n");
         verbose = 1;
+    }
+
+    if ((argc >= 3 && strcmp(argv[2], SEQUENTIAL_MODIFIER) == 0) || (argc >= 4 && strcmp(argv[3], SEQUENTIAL_MODIFIER) == 0) ||(argc >= 5 && strcmp(argv[4], SEQUENTIAL_MODIFIER) == 0) || (argc >= 6 && strcmp(argv[5], SEQUENTIAL_MODIFIER) == 0)) {
+        fprintf(stdout, "Sequential mode enabled.\n");
+        sequential = 20;
     }
 
 
     if (argc > 3 && strcmp(argv[2], PORT_MODIFIER) == 0) {
-        printf("Port modifier enabled 1.\n");
+        fprintf(stdout, "Port number changed to '%s'.\n", argv[3]);
         GSport = argv[3];
     }
 
     if (argc >= 5 && strcmp(argv[3], PORT_MODIFIER) == 0) {
-        printf("Port modifier enabled 2.\n");
+        fprintf(stdout, "Port number changed to '%s'.\n", argv[4]);
         GSport = argv[4];
     }
 
     if (argc == 1) {
-        fprintf(stderr, "Error: No word file specified. Usage: ./GS word_file [-p GSport] [-v].\n");
+        fprintf(stderr, "Error: No word file specified. Usage: ./GS word_file [-p GSport] [-v] [-s].\n");
         exit(1);
     }
+}
 
-    printf("Done! Server Port: %s, Verbose: %d.\n", GSport, verbose);
+int findLastGame(char *PLID, char *fname) {
+    struct dirent **filelist;
+    int n_entries, found;
+    char dirname [20] ;
+    sprintf(dirname , "GAMES/%s/", PLID);
+    n_entries = scandir(dirname ,&filelist, 0, alphasort);
+    found = 0;
+
+    if (n_entries <= 0)
+        return 0;
+
+    else {
+        while (n_entries--) {
+            if (filelist[n_entries]->d_name[0] != '.') {
+                sprintf(fname, "GAMES/%s/%s" ,PLID, filelist[n_entries]->d_name);
+                found = 1;
+            }
+            free(filelist[n_entries]);
+            if(found)
+                break;
+        }
+        free(filelist);
+    }
+    return found;
+}
+
+int findTopScores(int score[10], char PLID[10][BUFFERSIZE], char word[10][BUFFERSIZE], int n_succ[10], int n_trials[10]) {
+    struct dirent **filelist;
+    int n_entries = 0, i_file = 0;
+    char fname[BUFFERSIZE] = "";
+    FILE *fp = NULL;
+
+    n_entries = scandir("SCORES/", &filelist, 0, alphasort);
+    i_file = 0;
+    if (n_entries < 0) {
+        return 0;
+    }
+    else {
+        while(n_entries--) {
+            if (filelist[n_entries]->d_name[0] != '.') {
+                sprintf(fname, "SCORES/%s", filelist[n_entries]->d_name);
+                fp = fopen(fname, "r");
+                fseek(fp, 0, SEEK_SET);
+                if (fp != NULL) {
+                    fscanf(fp, "%d %s %s %d %d", &score[i_file], PLID[i_file], word[i_file], &n_succ[i_file], &n_trials[i_file]);
+                    fclose(fp);
+                    i_file++;
+                }
+            }
+            free(filelist[n_entries]);
+            if (i_file == 10)
+                break;
+        }
+        free(filelist);
+    }
+    return i_file;
 }
 
 int maxErrors(char word[]) {
@@ -59,6 +122,17 @@ int maxErrors(char word[]) {
 
     return -1;
     
+}
+
+int numberOfLines(FILE *file) {
+    int n_lines = 0;
+    char *fline = NULL;
+    size_t fline_size = 0;
+    while (getline(&fline, &fline_size, file) != -1) {
+        n_lines++;
+    }
+    fseek(file, 0, SEEK_SET);
+    return n_lines;
 }
 
 void randomLineSelection(FILE *wordfile, char *word, char *guess) {
@@ -78,16 +152,28 @@ void randomLineSelection(FILE *wordfile, char *word, char *guess) {
     fseek(wordfile, 0, SEEK_SET);
 }
 
-int numberOfLines(FILE *file) {
-    int n_lines = 0;
-    char *fline = NULL;
+void sequentialLineSelection(FILE *wordfile, char *word, char *guess) {
+    int count = 0;
+    char *fline =  NULL;
+    ssize_t i = 0;
     size_t fline_size = 0;
-    while (getline(&fline, &fline_size, file) != -1) {
-        n_lines++;
+    while (count < sequential) {
+        i = getline(&fline, &fline_size, wordfile);
+        count++;
+        if (i == -1) {
+            fseek(wordfile, 0, SEEK_SET);
+            getline(&fline, &fline_size, wordfile);
+            sscanf(fline, "%s %s", word, guess);
+            sequential = 1;
+            break;
+        }
+        else {
+            sscanf(fline, "%s %s", word, guess);
+        }
     }
-    fseek(file, 0, SEEK_SET);
-    return n_lines;
+    sequential++;
 }
+                    
 
 int repeatedGuess(FILE *file, char new_guess[]) {
     char *fline = NULL;
@@ -199,9 +285,7 @@ void saveScore(FILE* gamefile, char PLID[], char word[], int n_succ, int n_trial
     int score = 0;
     char sbfname[BUFFERSIZE] = "";
     sbfname[1] = '\0';
-    printf("n_succ: %d\n", n_succ);
     score = (n_succ * 100) / n_trials;
-    printf("score: %d\n", score);
     fseek(gamefile, 0, SEEK_SET);
     if (score < 10) 
         sprintf(sbfname, "SCORES/00%d_%s_%ld.txt", score, PLID, time(NULL));
@@ -213,68 +297,8 @@ void saveScore(FILE* gamefile, char PLID[], char word[], int n_succ, int n_trial
     if (scorefile == NULL) 
         printf("Error creating scorefile: Server error.\n");
     else 
-        fprintf(scorefile, "score %s %s %d %d", PLID, word, n_succ, n_trials);
+        fprintf(scorefile, "%d %s %s %d %d", score, PLID, word, n_succ, n_trials);
     fclose(scorefile);
-}
-
-int findLastGame(char *PLID, char *fname) {
-    struct dirent **filelist;
-    int n_entries, found;
-    char dirname [20] ;
-    sprintf(dirname , "GAMES/%s/", PLID);
-    n_entries = scandir(dirname ,&filelist, 0, alphasort);
-    found = 0;
-
-    if (n_entries <= 0)
-        return 0;
-
-    else {
-        while (n_entries--) {
-            if (filelist[n_entries]->d_name[0] != '.') {
-                sprintf(fname, "GAMES/%s/%s" ,PLID, filelist[n_entries]->d_name);
-                found = 1;
-            }
-            free(filelist[n_entries]);
-            if(found)
-                break;
-        }
-        free(filelist);
-    }
-    return found;
-}
-
-int findTopScores(struct SCORELIST *list) {
-    struct dirent **filelist;
-    int n_entries = 0, i_file = 0;
-    char fname[BUFFERSIZE] = "";
-    FILE *fp = NULL;
-
-    n_entries = scandir("SCORES/", &filelist, 0, alphasort);
-    i_file = 0;
-    if (n_entries < 0) {
-        return 0;
-    }
-    else {
-        while(n_entries--) {
-            printf("n_entries: %d\n", n_entries);
-            printf("filelist[n_entries]->d_name: %s\n", filelist[n_entries]->d_name);
-            if (filelist[n_entries]->d_name[0] != '.') {
-                sprintf(fname, "SCORES/%s", filelist[n_entries]->d_name);
-                fp = fopen(fname, "r");
-                if (fp != NULL) {
-                    fscanf(fp, "%d %s %s %d %d", &list->score[i_file], list->PLID[i_file], list->word[i_file], &list->n_succ[i_file], &list->n_tot[i_file]);
-                    fclose(fp);
-                    i_file++;
-                }
-            }
-            free(filelist[n_entries]);
-            if (i_file == 10)
-                break;
-        }
-        free(filelist);
-    }
-    printf("i_file: %d\n", i_file);
-    return i_file;
 }
 
 
@@ -297,7 +321,7 @@ int startGame(char message[]) {
     strcat(gfname, PLID);
     strcat(gfname, ".txt");
 
-    wordfile = fopen(WORDFILE, "r");
+    wordfile = fopen(WORDFILE, "a+");
 
     if (wordfile == NULL) {
         fprintf(stderr,"Error opening word file %s: %s\n", WORDFILE, strerror(errno));
@@ -316,11 +340,16 @@ int startGame(char message[]) {
     }
 
     fseek(gamefile, 0, SEEK_END);
+
     fsize = ftell(gamefile);
     fseek(gamefile, 0, SEEK_SET);
 
     if (fsize == 0) {
-        randomLineSelection(wordfile, word, hint);
+        if (sequential > 0) 
+            sequentialLineSelection(wordfile, word, hint);
+        else 
+            randomLineSelection(wordfile, word, hint);
+
         fprintf(gamefile, "%s %s\n", word, hint);
         strcat(message, STATUS_OK);
         strcat(message, " ");
@@ -330,6 +359,7 @@ int startGame(char message[]) {
         sprintf(word, "%d", maxErrors(word));
         strcat(message, word);
         strcat(message, "\n");
+        
     }
 
     else if (numberOfLines(gamefile) == 1) {
@@ -380,6 +410,12 @@ int guessWord(char message[]) {
 
     strcat(message, GUESS_WORD_RESPONSE_PROTOCOL);
     strcat(message, " ");
+
+    if (strlen(word) <= 2) {
+        strcat(message, STATUS_ERR);
+        strcat(message, "\n");
+        return 0;
+    }
 
     gamefile = fopen(gfname, "r");
 
@@ -479,6 +515,12 @@ int playLetter(char message[]) {
 
     memset(message, 0, BUFFERSIZE);
 
+    if (!isalpha(letter)) {
+        strcat(message, STATUS_ERR);
+        strcat(message, "\n");
+        return 0;
+    }
+
     strcat(message, PLAY_LETTER_RESPONSE_PROTOCOL);
     strcat(message, " ");
 
@@ -567,12 +609,16 @@ int playLetter(char message[]) {
 int scoreboard(char message[]) {
     char content[BUFFERSIZE] = "";
     char content_size[BUFFERSIZE] = "";
-    struct SCORELIST *scorelist = NULL;
+    int score[10];
+    char PLID[10][BUFFERSIZE];
+    char word[10][BUFFERSIZE]; 
+    int n_succ[10];
+    int n_trials[10];
     message[1] = '\0';
     content[1] = '\0';
     content_size[1] = '\0';
 
-    int score_number = findTopScores(scorelist);
+    int score_number = findTopScores(score, PLID, word, n_succ, n_trials);
     memset(message, 0, BUFFERSIZE_LARGE);
 
     printf("score_number is %d\n", score_number);
@@ -595,17 +641,17 @@ int scoreboard(char message[]) {
         score_str[1] = '\0';
         n_succ_str[1] = '\0';
         n_tot_str[1] = '\0';
-        sprintf(score_str, "%d", scorelist->score[i]);
-        sprintf(n_succ_str, "%d", scorelist->n_succ[i]);
-        sprintf(n_tot_str, "%d", scorelist->n_tot[i]);
+        sprintf(score_str, "%d", score[i]);
+        sprintf(n_succ_str, "%d", n_succ[i]);
+        sprintf(n_tot_str, "%d", n_trials[i]);
         sprintf(order, "%d", i + 1);
         strcat(content, order);
         strcat(content, " - ");
         strcat(content, score_str);
         strcat(content, " ");
-        strcat(content, scorelist->PLID[i]);
+        strcat(content, PLID[i]);
         strcat(content, " ");
-        strcat(content, scorelist->word[i]);
+        strcat(content, word[i]);
         strcat(content, " ");
         strcat(content, n_succ_str);
         strcat(content, " ");
@@ -622,7 +668,7 @@ int scoreboard(char message[]) {
     strcat(message, " ");
     strcat(message, STATUS_OK);
     strcat(message, " ");
-    strcat(message, "TOPSCORES");
+    strcat(message, "TOPSCORES.txt");
     strcat(message, " ");
     strcat(message, content_size);
     strcat(message, " ");
@@ -640,9 +686,11 @@ int getHint(char message[]) {
     char gfname[BUFFERSIZE] = "";
     char PLID[PLIDSIZE + 1] = "";
     char correct[BUFFERSIZE] = "";
+    char image_file[BUFFERSIZE] = "";
     char image_name[BUFFERSIZE] = "";
-    char image_content[BUFFERSIZE_LARGE] = "";
+    char *image_content = malloc(BUFFERSIZE_LARGE);
 
+    image_content[1] = '\0';
     gfname[1] = '\0';
     PLID[1] = '\0';
     correct[1] = '\0';
@@ -667,10 +715,11 @@ int getHint(char message[]) {
         return 0;
     }
 
-    fscanf(gamefile, "%s %s", correct, image_name);
+    fscanf(gamefile, "%s %s", correct, image_file);
     fseek(gamefile, 0, SEEK_SET);
     fclose(gamefile);
 
+    sprintf(image_name, "HINTS/%s", image_file);
     image = fopen(image_name, "r");
 
     if (image == NULL) {
@@ -683,9 +732,9 @@ int getHint(char message[]) {
     image_size = (size_t) ftell(image);
     fseek(image, 0, SEEK_SET);
 
-    bytes_read = fread(image_content, image_size, 1, image);
+    bytes_read = fread(image_content, 1, image_size, image);
 
-    if (bytes_read != 1) {
+    if (bytes_read != image_size) {
         fprintf(stderr, "Error: Could not read image file.\n");
         sprintf(message, "%s %s\n", HINT_RESPONSE_PROTOCOL, STATUS_NOK);
         return 0;
@@ -693,9 +742,124 @@ int getHint(char message[]) {
 
     fclose(image);
 
-    sprintf(message, "%s %s %s %ld %s", HINT_RESPONSE_PROTOCOL, STATUS_OK, image_name, image_size, image_content);
+    sprintf(message, "%s %s %s %ld ", HINT_RESPONSE_PROTOCOL, STATUS_OK, image_file, image_size);
+
+    free(image_content);
     
     return 0;
+}
+
+int getState(char message[]) {
+    FILE *gamefile = NULL;
+    FILE *last_game = NULL;
+    char termination[BUFFERSIZE] = "";
+    char last_gfname[BUFFERSIZE] = "";
+    char last_gf[BUFFERSIZE] = "";
+    char state_fname[BUFFERSIZE] = "";
+    char gfname[BUFFERSIZE] = "";
+    char PLID[PLIDSIZE + 1] = "";
+    char correct[BUFFERSIZE] = "";
+    char content[BUFFERSIZE] = "";
+    char hint[BUFFERSIZE] = "";
+    char content_size[BUFFERSIZE] = "";
+    char tries_str[BUFFERSIZE] = "";
+
+    last_gfname[1] = '\0';
+    last_gf[1] = '\0';
+    gfname[1] = '\0';
+    PLID[1] = '\0';
+    correct[1] = '\0';
+    hint[1] = '\0';
+    state_fname[1] = '\0';
+    content[1] = '\0';
+    content_size[1] = '\0';
+    tries_str[1] = '\0';
+    termination[1] = '\0';
+
+    sscanf(message + PROTOCOL_SIZE, "%s", PLID);
+
+    strcat(gfname, "GAME_");
+    strcat(gfname, PLID);
+    strcat(gfname, ".txt");
+
+    strcat(state_fname, "STATE_");
+    strcat(state_fname, PLID);
+    strcat(state_fname, ".txt");
+
+    memset(message, 0, BUFFERSIZE_LARGE);
+
+    strcat(message, STATE_RESPONSE_PROTOCOL);
+    strcat(message, " ");
+
+    gamefile = fopen(gfname, "r");
+
+    if (gamefile == NULL) {
+        sprintf(message, "%s %s", STATE_RESPONSE_PROTOCOL, STATUS_FIN);
+        findLastGame(PLID, last_gfname);
+        sprintf(last_gf, "GAMES/%s", last_gfname);
+        printf("Last game file: %s\n", last_gf);
+        printf("Last game file name: %s\n", last_gfname);
+        last_game = fopen(last_gfname, "r");
+        if (strstr(last_gfname, CODE_FAIL) != NULL)
+            strcat(termination, CODE_FAIL);
+        else if (strstr(last_gfname, CODE_WIN) != NULL)
+            strcat(termination, CODE_WIN);
+        else
+            strcat(termination, CODE_QUIT);
+        if (last_game == NULL) {
+            fprintf(stderr, "Could not find/open last game file.\n");
+            sprintf(message, "%s %s\n", STATE_RESPONSE_PROTOCOL, STATUS_NOK);
+            return 0;
+        }
+        fscanf(last_game, "%s %s", correct, hint);
+        sprintf(tries_str, "%d", numberOfLines(last_game) - 1);
+        strcat(content, "Last finalized game for player ");
+        strcat(content, PLID);
+        strcat(content, "\n");
+        strcat(content, "Correct word: ");
+        strcat(content, correct);
+        strcat(content, "; Hint file: ");
+        strcat(content, hint);
+        strcat(content, "\n");
+        strcat(content, "Total number of tries: ");
+        strcat(content, tries_str);
+        strcat(content, "\n");
+        strcat(content, "Termination code: ");
+        strcat(content, termination);
+        strcat(content, "\n");
+        fclose(last_game);
+    }
+
+    else {
+        sprintf(message, "%s %s", STATE_RESPONSE_PROTOCOL, STATUS_ACT);
+        fscanf(gamefile, "%s %s", correct, hint);
+        sprintf(tries_str, "%d", numberOfLines(gamefile) - 1);
+        strcat(content, "Current game for player ");
+        strcat(content, PLID);
+        strcat(content, "\n");
+        strcat(content, "Correct word: ");
+        strcat(content, correct);
+        strcat(content, "; Hint file: ");
+        strcat(content, hint);
+        strcat(content, "\n");
+        strcat(content, "Total number of tries: ");
+        strcat(content, tries_str);
+        strcat(content, "\n");
+        fclose(gamefile);
+    }
+
+    sprintf(content_size, "%ld", strlen(content));
+    strcat(message, " ");
+    strcat(message, state_fname);
+    strcat(message, " ");
+    strcat(message, content_size);
+    strcat(message, " ");
+    strcat(message, content);
+    strcat(message, "\n");
+
+    return 0;
+
+    
 }
 
 int quitGame(char message[]) {
@@ -737,47 +901,30 @@ void analyzeMessage(char message[]) {
     command[1] = '\0';
     sscanf(message, "%s", command);
 
-    if ((strcmp(command, START_GAME_PROTOCOL) == 0)) {
-        printf("Start game command detected.\n");
+    if ((strcmp(command, START_GAME_PROTOCOL) == 0) && (strlen(message) == PROTOCOL_SIZE + PLIDSIZE + 2)) 
         startGame(message);
 
-    }
-
-    else if (strcmp(command, PLAY_LETTER_PROTOCOL) == 0) {
-        printf("Play letter command detected.\n");
+    else if (strcmp(command, PLAY_LETTER_PROTOCOL) == 0) 
         playLetter(message);
-    }
 
-    else if (strcmp(command, GUESS_WORD_PROTOCOL) == 0) {
-        printf("Guess word command detected.\n");
+    else if (strcmp(command, GUESS_WORD_PROTOCOL) == 0) 
         guessWord(message);
-    }
 
-    else if (strcmp(command, SCOREBOARD_PROTOCOL) == 0) {
-        printf("Scoreboard command detected.\n");
+    else if (strcmp(command, SCOREBOARD_PROTOCOL) == 0) 
         scoreboard(message);
-    }
-
-    else if (strcmp(command, HINT_PROTOCOL) == 0) {
-        printf("Hint command detected.\n");
+    
+    else if (strcmp(command, HINT_PROTOCOL) == 0) 
         getHint(message);
-    }
 
-    else if (strcmp(command, STATE_PROTOCOL) == 0) {
-        printf("State command detected.\n");
-    }
+    else if (strcmp(command, STATE_PROTOCOL) == 0) 
+        getState(message);
 
-    else if (strcmp(command, REVEAL_PROTOCOL) == 0) {
-        printf("Reveal command detected.\n");
-    }
-
-    else if (strcmp(command, QUIT_PROTOCOL) == 0) {
-        printf("Quit command detected.\n");
+    else if (strcmp(command, QUIT_PROTOCOL) == 0 && (strlen(message) == PROTOCOL_SIZE + PLIDSIZE + 2)) 
         quitGame(message);
-    }
     
     else {
-        printf("Invalid command detected.\n");
+        memset(message, 0, BUFFERSIZE);
+        strcat(message, STATUS_ERR);
     }
 }
 
@@ -786,7 +933,8 @@ int receiveUDP(int fd) {
     int errcode;
     struct sockaddr_in addr;
     socklen_t addrlen;
-    ssize_t n, nread;
+    ssize_t n, nread;   
+
     char message[BUFFERSIZE] = "";
     message[1] = '\0';
 
@@ -818,15 +966,15 @@ int receiveUDP(int fd) {
         fprintf(stdout, "Waiting for UDP message...\n");
         nread=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr, &addrlen);
 
-        printf("fd: %d\n", fd);
-        if(nread==-1) {/*error*/
+        if(nread==-1) { /*error*/
             fprintf(stderr, "Error receiving message: %s\n", strerror(errno));
+            freeaddrinfo(res);
             exit(1);
         }
 
         if (verbose == 1) {
             fprintf(stdout, "UDP Message received from %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-            fprintf(stdout, "Message content: %s", message);
+            fprintf(stdout, "Message content: %s\n", message);
         }
 
         analyzeMessage(message);
@@ -835,12 +983,13 @@ int receiveUDP(int fd) {
 
         if(n==-1) {
             fprintf(stderr, "Error sending message: %s\n", strerror(errno));
+            freeaddrinfo(res);
             exit(1);
         }
 
         if (verbose == 1) {
             fprintf(stdout, "UDP Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-            fprintf(stdout, "Message content: %s", message);
+            fprintf(stdout, "Message content: %s\n", message);
         }
     }
     freeaddrinfo(res);
@@ -849,21 +998,28 @@ int receiveUDP(int fd) {
 }
 
 int receiveTCP(int fd) {
-    struct sigaction act;
     struct addrinfo hints, *res;
-    int newfd, errcode; 
+    int ret, newfd, errcode; 
+    pid_t pid;
     ssize_t n;
     size_t bytes;
     struct sockaddr_in addr;
     socklen_t addrlen;
-    char *cursor, message[BUFFERSIZE] = "";
+    struct sigaction act;
+    char *cursor, message[BUFFERSIZE_LARGE] = "";
     message[1] = '\0';
+    
+    memset(&act,0,sizeof act);
 
-    memset(&act, 0, sizeof(act));
-    act.sa_handler = SIG_IGN;
+    act.sa_handler=SIG_IGN;
+
+    if (sigaction(SIGPIPE,&act,NULL) == -1) {
+        fprintf(stderr, "TCP Error: sigaction failed.\n");
+        exit(1);
+    }
 
     if (sigaction(SIGCHLD, &act, NULL) == -1) {
-        fprintf(stderr, "TCP Error: sigaction failed... %s.\n", strerror(errno));
+        fprintf(stderr, "TCP Error: sigaction failed.\n");
         exit(1);
     }
     
@@ -896,6 +1052,7 @@ int receiveTCP(int fd) {
 
     if(listen(fd, 5) == -1) {
         fprintf(stderr, "TCP Error: server failed to listen...%s\n", strerror(errno)); /*error*/
+        freeaddrinfo(res);
         exit(1);
     }
 
@@ -903,68 +1060,90 @@ int receiveTCP(int fd) {
 
         addrlen=sizeof(addr);
 
+        memset(message, 0, BUFFERSIZE_LARGE);
+
         fprintf(stdout, "Waiting for TCP message...\n");
 
-        if ((newfd = accept(fd, (struct sockaddr*)&addr, &addrlen)) == -1) {
+        do newfd = accept(fd, (struct sockaddr*)&addr, &addrlen);
+        while (newfd == -1 && errno == EINTR);
+
+        if (newfd == -1) {
             fprintf(stderr, "TCP Error: server failed to accept...%s\n", strerror(errno)); /*error*/
+            freeaddrinfo(res);
             exit(1);
         }
 
-        printf("newfd: %d\n", newfd);
-        printf("fd: %d\n", fd);
-        
-        if (verbose == 1) 
-            fprintf(stdout, "TCP Message received from %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-
-
-        bytes = PROTOCOL_SIZE;
-        cursor = message;
-        while (bytes > 0) {
-            n = read(newfd, cursor, bytes);
-            if (n == -1) {
-                fprintf(stderr, "TCP Error: server failed to receive...%s\n", strerror(errno)); /*error*/
-                exit(1);
-            }
-            bytes -= (size_t) n;
-            cursor += n;
+        if ((pid = fork()) == -1) {
+            fprintf(stderr, "TCP Error: server failed to fork...%s\n", strerror(errno)); /*error*/
+            freeaddrinfo(res);
+            exit(1);
         }
 
-        if (verbose == 1) 
-            fprintf(stdout, "Message content: %s\n", message);
-
-        if (strcmp(message, HINT_PROTOCOL) == 0 || strcmp(message, STATE_PROTOCOL) == 0) {
-            bytes = PLIDSIZE + 1;
+        else if (pid == 0) {
+            bytes = PROTOCOL_SIZE;
+            cursor = message;
             while (bytes > 0) {
                 n = read(newfd, cursor, bytes);
                 if (n == -1) {
                     fprintf(stderr, "TCP Error: server failed to receive...%s\n", strerror(errno)); /*error*/
+                    freeaddrinfo(res);
                     exit(1);
                 }
                 bytes -= (size_t) n;
                 cursor += n;
             }
-        } 
 
-        if (verbose == 1) {
-            fprintf(stdout, "TCP Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
-            fprintf(stdout, "Message content: %s\n", message);
+            if (strcmp(message, HINT_PROTOCOL) == 0 || strcmp(message, STATE_PROTOCOL) == 0) {
+                bytes = PLIDSIZE + 1;
+                while (bytes > 0) {
+                    n = read(newfd, cursor, bytes);
+                    if (n == -1) {
+                        fprintf(stderr, "TCP Error: server failed to receive...%s\n", strerror(errno)); /*error*/
+                        freeaddrinfo(res);
+                        exit(1);
+                    }
+                    bytes -= (size_t) n;
+                    cursor += n;
+                }
+            }
+
+            if (verbose == 1) {
+                fprintf(stdout, "TCP Message received from %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
+                fprintf(stdout, "Message content: %s\n", message);
+            }
+
+            analyzeMessage(message);
+
+
+            bytes = strlen(message);
+            cursor = message;
+            while (bytes > 0) {
+                n = write(newfd, cursor, bytes);
+                if (n == -1) {
+                    fprintf(stderr, "TCP Error: server failed to send...%s\n", strerror(errno)); /*error*/
+                    freeaddrinfo(res);
+                    exit(1);
+                }
+                bytes -= (size_t) n;
+                cursor += n;
+            }
+
+            if (verbose == 1) {
+                fprintf(stdout, "TCP Message sent to %s:%d\n", inet_ntoa(addr.sin_addr),ntohs(addr.sin_port));
+                fprintf(stdout, "Message content: %s\n", message);
+            }
         }
-
-        analyzeMessage(message);
-
-        bytes = strlen(message);
-        cursor = message;
-        while (bytes > 0) {
-            n = write(newfd, cursor, bytes);
-            if (n == -1) {
-                fprintf(stderr, "TCP Error: server failed to send...%s\n", strerror(errno)); /*error*/
+        
+        if (pid > 0) {
+            do ret = close(newfd);
+            while (close(newfd) == -1 && errno == EINTR);
+            if (ret == -1) {
+                fprintf(stderr, "TCP Error: server failed to close...%s\n", strerror(errno)); /*error*/
+                freeaddrinfo(res);
                 exit(1);
             }
-            bytes -= (size_t) n;
-            cursor += n;
         }
-
-        close(newfd);
+        
     }
         
     freeaddrinfo(res);

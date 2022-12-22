@@ -4,13 +4,18 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <errno.h>
-#include <signal.h>
+#include <time.h>
+#include <dirent.h>
+#include <math.h>
 #include <ctype.h>
+#include <signal.h>
+#include <errno.h>
 
 extern int errno;
 int errcode;
@@ -101,12 +106,22 @@ char* correctWord(char *str, char* correct) {
 
 int startGame(int fd, char *Plid) {
     char message[BUFFERSIZE], command[BUFFERSIZE], status[BUFFERSIZE], errors[BUFFERSIZE], spaces[MAX_PRINTED_WORD_LENGTH];
+    struct timeval timeout;
     memset(&hints,0,sizeof hints);
     PLID[1] = '\0';
     hints.ai_family= AF_INET;  //IPv4
     hints.ai_socktype= SOCK_DGRAM;  //UDP socket
     trials = 1;
     errcode=getaddrinfo(GSIP,GSport,&hints,&res); //Get address info
+
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
+        fprintf(stderr, "UDP Error: setsockopt failed...%s\n", strerror(errno)); /*error*/
+        exit(1);
+    }
+
     if(errcode!=0) { 
         fprintf(stderr,"Error getting address info: %s\n",gai_strerror(errcode));
     }
@@ -123,6 +138,11 @@ int startGame(int fd, char *Plid) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            fprintf(stdout, "UDP Timeout: no message received.\n");
+            freeaddrinfo(res);
+            return 0;
+        }
         fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         exit(1);
     }
@@ -145,15 +165,28 @@ int playLetter(int fd, char* letter) {
     int positions[MAX_WORD_LENGTH - 1] = {0};
     char command[BUFFERSIZE], status[BUFFERSIZE], tries[BUFFERSIZE];
     char message[BUFFERSIZE] = "";
+    struct timeval timeout;
     message[1] = '\0';
     strcpy(message, "");
     memset(&hints,0,sizeof hints);
     hints.ai_family= AF_INET; //IPv4
     hints.ai_socktype= SOCK_DGRAM; //UDP socket
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
+        fprintf(stderr, "UDP Error: setsockopt failed...%s\n", strerror(errno)); /*error*/
+        exit(1);
+    }
+
     errcode=getaddrinfo(GSIP,GSport,&hints,&res); // trocar por GSIP!
     if(errcode!=0) { 
         fprintf(stderr,"Error getting address info: %s\n",gai_strerror(errcode));
         exit(1);
+    }
+    if ((strlen(letter) > 1) || (!isalpha(letter[0]))) {
+        printf("Invalid letter. Please try again.\n");
+        return 0;
     }
     sprintf(tries, "%d", trials);
     strcpy(message, PLAY_LETTER_PROTOCOL);
@@ -172,6 +205,11 @@ int playLetter(int fd, char* letter) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            fprintf(stdout, "UDP Timeout: no message received.\n");
+            freeaddrinfo(res);
+            return 0;
+        }
         fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         exit(1);
     }
@@ -208,8 +246,8 @@ int playLetter(int fd, char* letter) {
         printf("GAME OVER! You lost.\n");
     }
 
-    if (strcmp(status, STATUS_ERR) == 0) {
-        printf("An error occurred. Please try again.\n");
+    if (strcmp(status, STATUS_ERR) == 0 || strcmp(command, STATUS_ERR) == 0) {
+        printf("An error has ocurred. Please try again.\n");
     }
 
     if (strcmp(status, STATUS_DUP) == 0) {
@@ -229,12 +267,21 @@ int guessWord(int fd, char* guess) {
     char command[BUFFERSIZE], status[BUFFERSIZE], tries[BUFFERSIZE];
     char message[BUFFERSIZE] = "";
     char correct[BUFFERSIZE] = "";
+    struct timeval timeout;
     correct[1] = '\0';
     message[1] = '\0';
     strcpy(message, "");
     memset(&hints,0,sizeof hints);
     hints.ai_family= AF_INET; //IPv4
     hints.ai_socktype= SOCK_DGRAM; //UDP socket
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
+        fprintf(stderr, "UDP Error: setsockopt failed...%s\n", strerror(errno)); /*error*/
+        exit(1);
+    }
+
     errcode=getaddrinfo(GSIP,GSport,&hints,&res); // trocar por GSIP!
     if(errcode!=0) { 
         fprintf(stderr,"Error getting address info: %s\n",gai_strerror(errcode));
@@ -257,6 +304,11 @@ int guessWord(int fd, char* guess) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            fprintf(stdout, "UDP Timeout: no message received.\n");
+            freeaddrinfo(res);
+            return 0;
+        }
         fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         exit(1);
     }
@@ -277,7 +329,7 @@ int guessWord(int fd, char* guess) {
     }
 
     if (strcmp(status, STATUS_ERR) == 0) {
-        printf("An error occurred. Please try again.\n");
+        printf("An error has ocurred. Please try again.\n");
     }
 
     if (strcmp(status, STATUS_DUP) == 0) {
@@ -292,58 +344,11 @@ int guessWord(int fd, char* guess) {
     return 0;
 }
 
-int revealWord(int fd) {
-    char command[BUFFERSIZE], word[BUFFERSIZE];
-    char message[BUFFERSIZE] = "";
-    char correct[BUFFERSIZE] = "";
-    correct[1] = '\0';
-    message[1] = '\0';
-    strcpy(message, "");
-    memset(&hints,0,sizeof hints);
-    hints.ai_family= AF_INET; //IPv4
-    hints.ai_socktype= SOCK_DGRAM; //UDP socket
-    errcode=getaddrinfo(GSIP,GSport,&hints,&res); // trocar por GSIP!
-    if(errcode!=0) { 
-        fprintf(stderr,"Error getting address info: %s\n",gai_strerror(errcode));
-        exit(1);
-    }
-    strcpy(message, REVEAL_PROTOCOL);
-    strcat(message, " ");
-    strcat(message, PLID);
-    strcat(message, "\n");
-    n=sendto(fd, message, strlen(message), 0, res->ai_addr, res->ai_addrlen);
-    if(n==-1) {
-        fprintf(stderr,"Error sending message: %s\n",strerror(errno));
-        freeaddrinfo(res);
-        exit(1);
-    }
-    addrlen=sizeof(addr);
-    n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
-    if(n==-1) {
-        fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
-        freeaddrinfo(res);
-        exit(1);
-    }
-
-    sscanf(message, "%s %s", command, word);
-
-    if (strcmp(command, STATUS_ERR) == 0) {
-        printf("There is not a game in progress. Please start a new game.\n");
-    }
-
-    else {
-        printf("The word was:%s\n", correctWord(word, correct));
-    }
-
-    freeaddrinfo(res);
-
-    return 0;
-}
-
 int quitGame(int fd, int exit_code) {
     char command[BUFFERSIZE] = "";
     char message[BUFFERSIZE] = "";
     char status[BUFFERSIZE] = "";
+    struct timeval timeout;
     command[1] = '\0';
     message[1] = '\0';
     status[1] = '\0';
@@ -353,11 +358,27 @@ int quitGame(int fd, int exit_code) {
     memset(&hints,0,sizeof hints);
     hints.ai_family= AF_INET; //IPv4
     hints.ai_socktype= SOCK_DGRAM; //UDP socket
+
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0) {
+        fprintf(stderr, "UDP Error: setsockopt failed...%s\n", strerror(errno)); /*error*/
+        exit(1);
+    }
+
     errcode=getaddrinfo(GSIP,GSport,&hints,&res); 
+
     if(errcode!=0) { 
         fprintf(stderr,"Error getting address info: %s\n",gai_strerror(errcode));
         exit(1);
     }
+
+    if (strcmp(PLID, "") == 0) {
+        fprintf(stderr, "Error: No PLID set. Use 'start' followed by your PLID to start a new game.\n");
+        return 0;
+    }
+    
     strcpy(message, QUIT_PROTOCOL);
     strcat(message, " ");
     strcat(message, PLID);
@@ -371,6 +392,11 @@ int quitGame(int fd, int exit_code) {
     addrlen=sizeof(addr);
     n=recvfrom(fd,message,BUFFERSIZE,0,(struct sockaddr*)&addr,&addrlen);
     if(n==-1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            fprintf(stdout, "UDP Timeout: no message received.\n");
+            freeaddrinfo(res);
+            return 0;
+        }
         fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
         freeaddrinfo(res);
         exit(1);
@@ -380,7 +406,7 @@ int quitGame(int fd, int exit_code) {
 
     if (!exit_code) {
         if (strcmp(status, STATUS_ERR) == 0 || strcmp(command, STATUS_ERR) == 0) 
-            printf("An error has ocurred. Please try again\n");
+            printf("An error has ocurred. Please try again.\n");
 
         else if (strcmp(status, STATUS_NOK) == 0 || strcmp(command, STATUS_NOK) == 0)
             printf("There is not a game being played currently.\n");
@@ -450,8 +476,14 @@ int scoreboard(int fd) {
     memset(message, 0, BUFFERSIZE);
     bytes = MAX_RESPONSE_SIZE; 
     cursor = message;
+    printf("fd: %d\n", fd);
     while (bytes > 0) {
         n=read(fd, cursor, bytes);
+        sscanf(message, "%s %s %s %lu", command, status, filename, &filesize);
+        if (strcmp(status, STATUS_EMPTY) == 0) {
+            printf("There are still no wins! Keep grinding!\n");
+            return 0;
+        }
         if(n == -1) {
             fprintf(stderr,"Error receiving message: %s\n",strerror(errno));
             exit(1);
@@ -459,8 +491,6 @@ int scoreboard(int fd) {
         bytes -= (size_t) n;
         cursor += n;
     }
-
-    sscanf(message, "%s %s %s %lu", command, status, filename, &filesize);
 
     sprintf(filesize_length, "%lu", filesize);
 
@@ -476,11 +506,6 @@ int scoreboard(int fd) {
         }
         bytes -= (size_t) n;
         cursor += n;
-    }
-
-    if (strcmp(status, STATUS_EMPTY) == 0) {
-        printf("There are still no wins! Keep grinding!\n");
-        return 0;
     }
 
     scores = fopen(filename, "wb");
@@ -503,7 +528,7 @@ int scoreboard(int fd) {
         exit(1);
     }
 
-    fprintf(stdout, "Scoreboard saved as %s\n", filename);
+    fprintf(stdout, "Scoreboard saved as %s.\n", filename);
 
     freeaddrinfo(res);
 

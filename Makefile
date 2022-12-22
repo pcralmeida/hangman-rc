@@ -1,7 +1,7 @@
 # Makefile for hangman-rc
-# Redes de Computadores, IST/ULisboa 2022-23
+# RC, IST/ULisboa 2022-23
 #
-# This makefile should be run from the root of the project
+# This makefile should be run from the root of the project!!
 
 CC ?= gcc
 LD ?= gcc
@@ -42,8 +42,6 @@ else
   CFLAGS += -O3
 endif
 
-# A phony target is one that is not really the name of a file
-# https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all clean depend fmt
 
 all: $(TARGET_EXECS) 
@@ -52,31 +50,28 @@ all: $(TARGET_EXECS)
 
 
 # The following target can be used to invoke clang-format on all the source and header
-# files. clang-format is a tool to format the source code based on the style specified 
-# in the file '.clang-format'.
-# More info available here: https://clang.llvm.org/docs/ClangFormat.html
+# files. clang-format is a tool to format the source code based on the style specified.
 
-# The $^ keyword is used in Makefile to refer to the right part of the ":" in the 
-# enclosing rule. See https://www.cs.colby.edu/maxwell/courses/tutorials/maketutor/
 
 fmt: $(SOURCES) $(HEADERS)
 	clang-format -i $^
 
 
 
-# Note the lack of a rule.
 # make uses a set of default rules, one of which compiles C binaries
-# the CC, LD, CFLAGS and LDFLAGS are used in this rule
+# the CC, LD, CFLAGS and LDFLAGS are used in this rule.
 client/client: client/client.o client/client_functions.o
 
 server/server: server/server.o server/server_functions.o
 
+# Does not remove the 'GAMES' folder, because -f can't remove non-empty folders
+# exit will be 1 but the result will be the desired one.
 clean:
-	rm -f $(OBJECTS) $(TARGET_EXECS) client/player server/GS client/*.jpg client/*.jpeg client/[S]*
+	rm -f $(OBJECTS) $(TARGET_EXECS) client/player server/GS client/*.jpg client/*.jpeg client/[S]* client/[T]* server/SCORES/*.txt server/[GAME_]*
+	rm -r server/GAMES/*
 
 
-# This generates a dependency file, with some default dependencies gathered from the include tree
-# The dependencies are gathered in the file autodep. You can find an example illustrating this GCC feature, without Makefile, at this URL: https://renenyffenegger.ch/notes/development/languages/C-C-plus-plus/GCC/options/MM
-# Run `make depend` whenever you add new includes in your files
+# This generates a dependency file, with some default dependencies gathered from the include tree.
+# The dependencies are gathered in the file autodep.
 depend : $(SOURCES)
 	$(CC) $(INCLUDES) -MM $^ > autodep

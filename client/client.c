@@ -109,16 +109,6 @@ int main(int argc, char *argv[]) {
             quitGame(fd, 1);
             close(fd);
         }
-        else if (strcmp(command, REVEAL) == 0) {
-            fd=socket(AF_INET,SOCK_DGRAM,0); 
-            if(fd==-1) {
-                printf("Socket creation failed.\n");
-                fprintf(stderr,"error: %s\n",strerror(errno));
-                exit(1);
-            }
-            revealWord(fd);
-            close(fd);
-        }
         
         else {
             printf("Invalid command. Please try again.\n");

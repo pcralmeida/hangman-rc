@@ -8,8 +8,9 @@
 #define PROTOCOL_SIZE 3 // Size of the protocol "XXX" (3 characters)
 #define DEFAULT_PORT "58079" // The group number is 079, DEFAULT_PORT = PORT + 079
 #define VERBOSE_MODIFIER "-v" // The verbose modifier argument
+#define SEQUENTIAL_MODIFIER "-s" // The sequential modifier argument
 #define PORT_MODIFIER "-p" // The port modifier argument
-#define WORDFILE "wordfile.txt" // The word file
+#define WORDFILE "word_eng.txt" // The word file
 #define WORDFILE_SIZE 648 // The size of the word file
 
 #define START_GAME_PROTOCOL "SNG" // Start game protocol
@@ -49,15 +50,6 @@
 #define CODE_QUIT "Q" // Code QUIT
 
 #define max(a,b) ((a) > (b) ? (a) : (b)) // Max function
-
-struct SCORELIST {
-    int* score;
-    char** PLID;
-    char** word;
-    int* n_succ;
-    int* n_tot;
-    int n_scores;
-};
 
 void applyModifiers(int argc, char *argv[]); // Apply the modifiers
 int receiveUDP(int fd); // Receive UDP packets

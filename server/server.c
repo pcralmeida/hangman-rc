@@ -24,17 +24,11 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    else if (pid > 0) { // Parent process handles UDP
-        printf("UDP server is now open.\n");
+    else if (pid > 0)  // Parent process handles UDP
         receiveUDP(udp_fd);
-        printf("UDP server is now closed.\n");
-    }
 
-    else if (pid == 0) { // Child process handles TCP
-        printf("TCP server is now open.\n");
+    else if (pid == 0)  // Child process handles TCP
         receiveTCP(tcp_fd);
-        printf("TCP server is now closed.\n");
-    }
 
     return 0;
 
